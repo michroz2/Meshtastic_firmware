@@ -425,65 +425,18 @@ DecodeState perhapsDecode(meshtastic_MeshPacket *p)
     }
     bool decrypted = false;
     ChannelIndex chIndex = 0;
-#if !(MESHTASTIC_EXCLUDE_PKI)
-    // Attempt PKI decryption first
-    if (p->channel == 0 && isToUs(p) && p->to > 0 && !isBroadcast(p->to) && nodeDB->getMeshNode(p->from) != nullptr &&
-        nodeDB->getMeshNode(p->from)->user.public_key.size > 0 && nodeDB->getMeshNode(p->to)->user.public_key.size > 0 &&
-        rawSize > MESHTASTIC_PKC_OVERHEAD) {
-        LOG_DEBUG("Attempt PKI decryption");
-
-        if (crypto->decryptCurve25519(p->from, nodeDB->getMeshNode(p->from)->user.public_key, p->id, rawSize, p->encrypted.bytes,
-                                      bytes)) {
-            LOG_INFO("PKI Decryption worked!");
-
-            meshtastic_Data decodedtmp;
-            memset(&decodedtmp, 0, sizeof(decodedtmp));
-            rawSize -= MESHTASTIC_PKC_OVERHEAD;
-            if (pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &decodedtmp) &&
-                decodedtmp.portnum != meshtastic_PortNum_UNKNOWN_APP) {
-                decrypted = true;
-                LOG_INFO("Packet decrypted using PKI!");
-                p->pki_encrypted = true;
-                memcpy(&p->public_key.bytes, nodeDB->getMeshNode(p->from)->user.public_key.bytes, 32);
-                p->public_key.size = 32;
-                p->decoded = decodedtmp;
-                p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
-            } else {
-                LOG_ERROR("PKC Decrypted, but pb_decode failed!");
-                return DecodeState::DECODE_FAILURE;
-            }
-        } else {
-            LOG_WARN("PKC decrypt attempted but failed!");
-        }
-    }
-#endif
-
-    // assert(p->which_payloadVariant == MeshPacket_encrypted_tag);
+#if MESHTASTIC_DISABLE_LORA_ENCRYPTION
     if (!decrypted) {
         // Try to find a channel that works with this hash
         for (chIndex = 0; chIndex < channels.getNumChannels(); chIndex++) {
-            // Try to use this hash/channel pair
             if (channels.decryptForHash(chIndex, p->channel)) {
-                // we have to copy into a scratch buffer, because these bytes are a union with the decoded protobuf. Create a
-                // fresh copy for each decrypt attempt.
                 memcpy(bytes, p->encrypted.bytes, rawSize);
-                // Try to decrypt the packet if we can
-                crypto->decrypt(p->from, p->id, rawSize, bytes);
-
-                // printBytes("plaintext", bytes, p->encrypted.size);
-
-                // Take those raw bytes and convert them back into a well structured protobuf we can understand
                 meshtastic_Data decodedtmp;
                 memset(&decodedtmp, 0, sizeof(decodedtmp));
                 if (!pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &decodedtmp)) {
-                    LOG_ERROR("Invalid protobufs in received mesh packet id=0x%08x (bad psk?)!", p->id);
+                    LOG_ERROR("Invalid plaintext in received mesh packet id=0x%08x!", p->id);
                 } else if (decodedtmp.portnum == meshtastic_PortNum_UNKNOWN_APP) {
-                    LOG_ERROR("Invalid portnum (bad psk?)!");
-#if !(MESHTASTIC_EXCLUDE_PKI)
-                } else if (!owner.is_licensed && isToUs(p) && decodedtmp.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP) {
-                    LOG_WARN("Rejecting legacy DM");
-                    return DecodeState::DECODE_FAILURE;
-#endif
+                    LOG_ERROR("Invalid portnum in plaintext packet!");
                 } else {
                     p->decoded = decodedtmp;
                     p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
@@ -493,6 +446,76 @@ DecodeState perhapsDecode(meshtastic_MeshPacket *p)
             }
         }
     }
+#else
+    // assert(p->which_payloadVariant == MeshPacket_encrypted_tag);
+    if (!decrypted) {
+#if !(MESHTASTIC_EXCLUDE_PKI)
+        // Attempt PKI decryption first
+        if (p->channel == 0 && isToUs(p) && p->to > 0 && !isBroadcast(p->to) && nodeDB->getMeshNode(p->from) != nullptr &&
+            nodeDB->getMeshNode(p->from)->user.public_key.size > 0 && nodeDB->getMeshNode(p->to)->user.public_key.size > 0 &&
+            rawSize > MESHTASTIC_PKC_OVERHEAD) {
+            LOG_DEBUG("Attempt PKI decryption");
+
+            if (crypto->decryptCurve25519(p->from, nodeDB->getMeshNode(p->from)->user.public_key, p->id, rawSize,
+                                          p->encrypted.bytes, bytes)) {
+                LOG_INFO("PKI Decryption worked!");
+
+                meshtastic_Data decodedtmp;
+                memset(&decodedtmp, 0, sizeof(decodedtmp));
+                rawSize -= MESHTASTIC_PKC_OVERHEAD;
+                if (pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &decodedtmp) &&
+                    decodedtmp.portnum != meshtastic_PortNum_UNKNOWN_APP) {
+                    decrypted = true;
+                    LOG_INFO("Packet decrypted using PKI!");
+                    p->pki_encrypted = true;
+                    memcpy(&p->public_key.bytes, nodeDB->getMeshNode(p->from)->user.public_key.bytes, 32);
+                    p->public_key.size = 32;
+                    p->decoded = decodedtmp;
+                    p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
+                } else {
+                    LOG_ERROR("PKC Decrypted, but pb_decode failed!");
+                    return DecodeState::DECODE_FAILURE;
+                }
+            } else {
+                LOG_WARN("PKC decrypt attempted but failed!");
+            }
+        }
+#endif
+
+        if (!decrypted) {
+            // Try to find a channel that works with this hash
+            for (chIndex = 0; chIndex < channels.getNumChannels(); chIndex++) {
+                // Try to use this hash/channel pair
+                if (channels.decryptForHash(chIndex, p->channel)) {
+                    // we have to copy into a scratch buffer, because these bytes are a union with the decoded protobuf. Create a
+                    // fresh copy for each decrypt attempt.
+                    memcpy(bytes, p->encrypted.bytes, rawSize);
+                    // Try to decrypt the packet if we can
+                    crypto->decrypt(p->from, p->id, rawSize, bytes);
+
+                    // Take those raw bytes and convert them back into a well structured protobuf we can understand
+                    meshtastic_Data decodedtmp;
+                    memset(&decodedtmp, 0, sizeof(decodedtmp));
+                    if (!pb_decode_from_bytes(bytes, rawSize, &meshtastic_Data_msg, &decodedtmp)) {
+                        LOG_ERROR("Invalid protobufs in received mesh packet id=0x%08x (bad psk?)!", p->id);
+                    } else if (decodedtmp.portnum == meshtastic_PortNum_UNKNOWN_APP) {
+                        LOG_ERROR("Invalid portnum (bad psk?)!");
+#if !(MESHTASTIC_EXCLUDE_PKI)
+                    } else if (!owner.is_licensed && isToUs(p) && decodedtmp.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP) {
+                        LOG_WARN("Rejecting legacy DM");
+                        return DecodeState::DECODE_FAILURE;
+#endif
+                    } else {
+                        p->decoded = decodedtmp;
+                        p->which_payload_variant = meshtastic_MeshPacket_decoded_tag; // change type to decoded
+                        decrypted = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+#endif
 
     if (decrypted) {
         // parsing was successful
@@ -595,6 +618,25 @@ meshtastic_Routing_Error perhapsEncode(meshtastic_MeshPacket *p)
 
         ChannelIndex chIndex = p->channel; // keep as a local because we are about to change it
 
+#if MESHTASTIC_DISABLE_LORA_ENCRYPTION
+        hash = channels.setActiveByIndex(chIndex);
+
+        if (hash < 0) {
+            // No suitable channel could be found for
+            return meshtastic_Routing_Error_NO_CHANNEL;
+        }
+
+        // Leave payload in plaintext but continue to share a consistent channel hash with peers.
+        memcpy(p->encrypted.bytes, bytes, numbytes);
+
+        // Now that we are preparing the packet, store the hash (no longer the index)
+        p->channel = hash;
+        p->pki_encrypted = false;
+
+        // Copy back into the packet and set the variant type
+        p->encrypted.size = numbytes;
+        p->which_payload_variant = meshtastic_MeshPacket_encrypted_tag;
+#else
 #if !(MESHTASTIC_EXCLUDE_PKI)
         meshtastic_NodeInfoLite *node = nodeDB->getMeshNode(p->to);
         // We may want to retool things so we can send a PKC packet when the client specifies a key and nodenum, even if the node
@@ -666,6 +708,7 @@ meshtastic_Routing_Error perhapsEncode(meshtastic_MeshPacket *p)
         // Copy back into the packet and set the variant type
         p->encrypted.size = numbytes;
         p->which_payload_variant = meshtastic_MeshPacket_encrypted_tag;
+#endif
     }
 
     return meshtastic_Routing_Error_NONE;

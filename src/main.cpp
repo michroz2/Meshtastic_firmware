@@ -298,7 +298,16 @@ void printInfo()
 #ifndef PIO_UNIT_TESTING
 void setup()
 {
-#if defined(R1_NEO)
+// БЛОКИРОВКА СТАРОГО МОДУЛЯ
+#ifdef OLD_LORA_KILL_PIN
+pinMode(OLD_LORA_KILL_PIN, OUTPUT);
+digitalWrite(OLD_LORA_KILL_PIN, HIGH);
+#endif
+
+// ... далее старый код
+
+
+    #if defined(R1_NEO)
     pinMode(DCDC_EN_HOLD, OUTPUT);
     digitalWrite(DCDC_EN_HOLD, HIGH);
     pinMode(NRF_ON, OUTPUT);
@@ -1302,7 +1311,8 @@ void setup()
 
 #if defined(USE_SX1268)
 #if defined(SX126X_DIO3_TCXO_VOLTAGE) && defined(TCXO_OPTIONAL)
-    if ((!rIf) && (config.lora.region != meshtastic_Config_LoRaConfig_RegionCode_LORA_24)) {
+LOG_WARN("defined(SX126X_DIO3_TCXO_VOLTAGE) && defined(TCXO_OPTIONAL)");
+if ((!rIf) && (config.lora.region != meshtastic_Config_LoRaConfig_RegionCode_LORA_24)) {
         // try using the specified TCXO voltage
         auto *sxIf = new SX1268Interface(RadioLibHAL, SX126X_CS, SX126X_DIO1, SX126X_RESET, SX126X_BUSY);
         sxIf->setTCXOVoltage(SX126X_DIO3_TCXO_VOLTAGE);

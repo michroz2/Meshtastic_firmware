@@ -32,6 +32,16 @@ SX126xInterface<T>::SX126xInterface(LockingArduinoHal *hal, RADIOLIB_PIN_TYPE cs
 template <typename T> bool SX126xInterface<T>::init()
 {
 
+// --- ИСПРАВЛЕНИЕ: ЯВНОЕ ВКЛЮЧЕНИЕ TCXO ---
+    // Так как автоматический блок отсутствует или не работает,
+    // мы задаем напряжение вручную.
+    #ifdef SX126X_DIO3_TCXO_VOLTAGE
+        tcxoVoltage = SX126X_DIO3_TCXO_VOLTAGE;
+    #endif
+    LOG_INFO("tcxoVoltage= %f V", tcxoVoltage);
+ 
+    // ------------------------------------------
+
 // Typically, the RF switch on SX126x boards is controlled by two signals, which are negations of each other (switched RFIO
 // paths). The negation is usually performed in hardware, or (suboptimal design) TXEN and RXEN are the two inputs to this style of
 // RF switch. On some boards, there is no hardware negation between CTRL and ¬CTRL, but CTRL is internally connected to DIO2, and
@@ -75,14 +85,24 @@ template <typename T> bool SX126xInterface<T>::init()
         LOG_DEBUG("SX126X_DIO3_TCXO_VOLTAGE defined, using DIO3 as TCXO reference voltage at %f V", tcxoVoltage);
     setTransmitEnable(false);
     // FIXME: May want to set depending on a definition, currently all SX126x variant files use the DC-DC regulator option
-    bool useRegulatorLDO = false; // Seems to depend on the connection to pin 9/DCC_SW - if an inductor DCDC?
-
-    RadioLibInterface::init();
+// MOD: Принудительно прижимаем BUSY к земле перед инициализацией, чтобы убрать наводку 0.9В
+    pinMode(SX126X_BUSY, INPUT_PULLDOWN);
+    
+    // ВАЖНО: Для E22 (и 30, и 33) обязательно TRUE.
+    #ifdef TBEAM_E22_MOD
+        bool useRegulatorLDO = true; 
+    #else
+        bool useRegulatorLDO = false; // Для стоковой LoRa оставляем false
+    #endif
 
     limitPower(SX126X_MAX_POWER);
     // Make sure we reach the minimum power supported to turn the chip on (-9dBm)
     if (power < -9)
         power = -9;
+    
+    power = 22;
+    //Mich 
+
 
     int res = lora.begin(getFreq(), bw, sf, cr, syncWord, power, preambleLength, tcxoVoltage, useRegulatorLDO);
     // \todo Display actual typename of the adapter, not just `SX126x`
@@ -94,6 +114,38 @@ template <typename T> bool SX126xInterface<T>::init()
     LOG_INFO("Bandwidth set to %f", bw);
     LOG_INFO("Power output set to %d", power);
 
+    // ==========================================
+    // E22 MOD FIX (Вставка для SX1268)
+    // ==========================================
+#ifdef TBEAM_E22_MOD
+    // 1. Принудительное включение TCXO на 1.8В (Жизненно важно для E22)
+    // Если модуль молчит - скорее всего, не завелся генератор.
+// if (lora.setTCXO(1.8) != RADIOLIB_ERR_NONE) {
+//     LOG_ERROR("E22: TCXO init failed!");
+// }
+
+// 2. Включаем DCDC (E22 любит стабильное питание)
+// lora.setRegulator(RADIOLIB_SX126X_REGULATOR_DC_DC);
+
+// 1. Повторно подтверждаем режим LDO для стабильности
+// lora.setRegulatorMode(RADIOLIB_SX126X_REGULATOR_LDO);
+
+// 2. Установка лимита тока. Для 1 Ватт (30dBm) нужно минимум 140mA.
+    // Если лимит будет ниже (например 60mA), чип захлебнется при передаче.
+    // lora.setCurrentLimit(140);
+
+    // // 3. Переключение антенн 
+//     #if defined(LORA_RXEN) && defined(LORA_TXEN)
+//         lora.setRfSwitchPins(LORA_RXEN, LORA_TXEN);
+//     #endif
+    
+    // Поднимаем ток (чтобы не уходил в защиту на 30dBm)
+    // lora.setCurrentLimit(140);
+    // LOG_INFO("E22: LDO mode and Current Limit 140mA applied");
+
+#endif
+    // --- КОНЕЦ ВСТАВКИ ---    // End of E22 MOD FIX
+// ==========================================
     // Overriding current limit
     // (https://github.com/jgromes/RadioLib/blob/690a050ebb46e6097c5d00c371e961c1caa3b52e/src/modules/SX126x/SX126x.cpp#L85) using
     // value in SX126xInterface.h (currently 140 mA) It may or may not be necessary, depending on how RadioLib functions, from
@@ -102,9 +154,11 @@ template <typename T> bool SX126xInterface<T>::init()
     // are: SX1262, SX1268: 0x38 (140 mA), SX1261: 0x18 (60 mA)
     // FIXME: Not ideal to increase SX1261 current limit above 60mA as it can only transmit max 15dBm, should probably only do it
     // if using SX1262 or SX1268
-    res = lora.setCurrentLimit(currentLimit);
-    LOG_DEBUG("Current limit set to %f", currentLimit);
-    LOG_DEBUG("Current limit set result %d", res);
+
+//Mich - deleted Current limit
+    // res = lora.setCurrentLimit(currentLimit);
+    // LOG_DEBUG("Current limit set to %f", currentLimit);
+    // LOG_DEBUG("Current limit set result %d", res);
 
     if (res == RADIOLIB_ERR_NONE) {
 #ifdef SX126X_DIO2_AS_RF_SWITCH
@@ -147,7 +201,8 @@ template <typename T> bool SX126xInterface<T>::init()
         uint16_t result = lora.setRxBoostedGainMode(true);
         LOG_INFO("Set RX gain to boosted mode; result: %d", result);
     } else {
-        uint16_t result = lora.setRxBoostedGainMode(false);
+        uint16_t result = lora.setRxBoostedGainMode(true);
+        //Mich change to true - always use boosted mode!
         LOG_INFO("Set RX gain to power saving mode (boosted mode off); result: %d", result);
     }
 
@@ -209,10 +264,10 @@ template <typename T> bool SX126xInterface<T>::reconfigure()
         LOG_ERROR("SX126X setSyncWord %s%d", radioLibErr, err);
     assert(err == RADIOLIB_ERR_NONE);
 
-    err = lora.setCurrentLimit(currentLimit);
-    if (err != RADIOLIB_ERR_NONE)
-        LOG_ERROR("SX126X setCurrentLimit %s%d", radioLibErr, err);
-    assert(err == RADIOLIB_ERR_NONE);
+   // err = lora.setCurrentLimit(currentLimit);
+    // if (err != RADIOLIB_ERR_NONE)
+    //     LOG_ERROR("SX126X setCurrentLimit %s%d", radioLibErr, err);
+    // assert(err == RADIOLIB_ERR_NONE);
 
     err = lora.setPreambleLength(preambleLength);
     if (err != RADIOLIB_ERR_NONE)

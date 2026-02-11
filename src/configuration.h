@@ -76,6 +76,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define EXT_RAM_BSS_ATTR EXT_RAM_ATTR
 #endif
 
+#ifndef MESHTASTIC_DISABLE_LORA_ENCRYPTION
+/// Set to 1 to compile without LoRa payload encryption (default), 0 to retain encryption.
+#define MESHTASTIC_DISABLE_LORA_ENCRYPTION 1
+#endif
+
 // -----------------------------------------------------------------------------
 // Regulatory overrides
 // -----------------------------------------------------------------------------
