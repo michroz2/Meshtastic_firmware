@@ -1,4 +1,36 @@
-<div align="center" markdown="1">
+# ⚠️ Custom Ebyte E22-400M30S/M33S Build (SX1268)
+[EN] Meshtastic minimallistically-Modified Firmware with Ebyte E22 Mod (SX1268)
+This is a customized version of the Meshtastic firmware for LILYGO T-Beam v1.1, specifically adapted for testing the board with high-power Ebyte E22-400M30S/M33S modules (SX1268).
+
+Key Modifications
+Conflict Resolution: Relocated LoRa pins to avoid interference with the onboard SX1276 chip.
+High Power Support: Optimized for 30dBm (1W) and 33dBm (2W) operations - independent on Meshtastic regional settings.
+Power Management: Forced LDO mode and disabled OCP (Overcurrent Protection) to prevent chip crashes during transmission.
+
+Hardware:
+Common SPI pins parallel to old Lora module. VCC is wired directly to stock battery contact.
+Signal,GPIO (ESP32),Note
+LORA_CS (NSS),13,Chip Select
+LORA_RESET,14,Hardware Reset
+LORA_BUSY,15,Busy Status
+LORA_DIO1,35,Interrupt
+LORA_TXEN,2,Power Amplifier 
+LORA_RXEN,25,LNA Enable
+
+[RU] Прошивка Meshtastic с модом Ebyte E22 (SX1268)
+Это с минимальными изменениями кастомная версия прошивки Meshtastic для LILYGO T-Beam v1.1, адаптированная для проверки работы платы с мощными модулями Ebyte E22-400M30S/M33S (SX1268).
+
+Основные изменения
+Разрешение конфликтов: Переназначены пины LoRa, чтобы исключить конфликты со штатным чипом SX1276, распаянным на плате.
+Поддержка высокой мощности: Оптимизировано для работы на мощностях 30dBm (1 Вт) и 33dBm (2 Вт)- независимо от региональных и юзерских настроек Meshtastic.
+Питание: Принудительно включен режим LDO и отключена защита по току OCP, что предотвращает зависание чипа в момент передачи.
+Разводка пинов - см. выше, Общие SPI пины припаяны параллельно старой LoRa. Питание заведено напрямую на штатную батарею.
+
+### Сборка / How to Build:
+При использовании этой прошивки с мощной LoRa следует использовать окружение (environment) `tbeam-e22-433`
+При использовании этой прошивки со стандартной LoRa следует использовать окружение (environment) `tbeam`
+
+---<div align="center" markdown="1">
 
 <img src=".github/meshtastic_logo.png" alt="Meshtastic Logo" width="80"/>
 <h1>Meshtastic Firmware</h1>
