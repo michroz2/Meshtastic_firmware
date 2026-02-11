@@ -56,7 +56,7 @@
     // --- РАЗРЕШЕНИЕ КОНФЛИКТОВ ---
     // Отключаем системные функции на пинах, которые мы забрали под радио:
     #define EXT_NOTIFY_OUT 0  // Отключаем пищалку (был 13), т.к. 13 теперь CS
-    #define LED_PIN        2  // Отключаем синий LED (был 4), т.к. 4 теперь TXEN
+    #define LED_PIN        4  // Отключаем синий LED (был 4), т.к. 4 теперь TXEN
     
     // --- ПИНЫ SPI (Припаяны к дорожкам) ---
     #define LORA_SCK  5
@@ -65,13 +65,12 @@
 
     // --- УПРАВЛЕНИЕ E22 (С гребенки) ---
     #define LORA_CS   13    // NSS (Chip Select) 
-//    #define LORA_RST  14    // Reset
     #define LORA_RESET  14    // Reset
     #define LORA_BUSY 15 //32    // Busy (Статус занятости)
     #define LORA_DIO1 35 //33    // DIO1 (Прерывание)
     
     // --- УПРАВЛЕНИЕ ВНЕШНИМ УСИЛИТЕЛЕМ (RXEN/TXEN) ---
-    #define LORA_TXEN 4     // Включение передачи (GPIO 4)
+    #define LORA_TXEN 2     // Включение передачи (GPIO 4)
     #define LORA_RXEN 25    // Включение приема (GPIO 25)
     #define SX126X_RXEN  LORA_RXEN
     #define SX126X_TXEN  LORA_TXEN
